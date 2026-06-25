@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>11x11地雷寻宝回合对战（修复版）</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui}
+body{background:#1a1a2e;color:#fff;padding:20px;display:flex;flex-direction:column;align-items:center}
+.info-bar{width:100%;max-width:700px;margin-bottom:12px;display:flex;justify-content:space-between;background:#16213e;padding:12px 16px;border-radius:8px}
+.player-info{text-align:center}
+.green{color:#4ade80;font-weight:bold}
+.red{color:#f87171;font-weight:bold}
+.tip-text{margin:8px 0 16px;height:24px;font-size:18px}
+#board{display:grid;grid-template-columns:repeat(11,44px);gap:1px;background:#333;padding:1px;border-radius:4px}
+.cell{width:44px;height:44px;background:#222;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:10px;color:#aaa}
+/* 起点区域底色 */
+.cell.green-base{background:#164028}
+.cell.red-base{background:#601818}
+/* 宝物样式 */
+.cell.treasure{background:#776100}
+.cell.treasure::after{content:"💎";font-size:22px}
+/* 棋子 */
+.piece{width:22px;height:22px;border-radius:50%;position:absolute;z-index:2}
+.piece.green{background:#4ade80;border:2px solid #fff}
+.piece.red{background:#f87171;border:2px solid #fff}
+/* 埋雷阶段己方地雷标记 */
+.cell.mine-mark::before{content:"💣";font-size:18px}
+.ctrl-area{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{padding:10px 24px;font-size:16px;border:none;border-radius:6px;cursor:pointer;margin:0 6px}
+#confirmMine{background:#2563eb;color:#fff}
+#restart{background:#666;color:#fff}
+#toggleMineView{background:#92400e;color:#fff;display:none}
+.pop{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:99}
+.pop-box{background:#16213e;padding:30px;border-radius:10px;text-align:center;max-width:400px}
+.pop-box h2{margin-bottom:16px}
+.pop-box button{margin-top:12px}
+</style>
+</head>
+<body>
+<div class="info-bar">
+    <div class="player-info">
+        <div class="green">绿方</div>
+        <div>分数：<span id="greenScore">0</span></div>
+        <div id="greenMineTip">埋雷剩余：15</div>
+    </div>
+    <div class="player-info">
+        <div>宝物剩余：<span id="treasureLeft">3</span>/3</div>
+        <div id="stageText">绿方埋雷阶段</div>
+    </div>
+    <div class="player-info">
+        <div class="red">红方</div>
+        <div>分数：<span id="redScore">0</span></div>
+        <div id="redMineTip">埋雷剩余：15</div>
+    </div>
+</div>
+<div class="tip-text" id="tip"></div>
+<div id="board"></div>
+<div class="ctrl-area">
+    <button id="confirmMine">完成埋雷</button>
+    <button id="toggleMineView">显示地雷</button>
+    <button id="restart">重新开局</button>
+</div>
+
+<!-- 弹窗 -->
+<div class="pop" id="popBox">
+    <div class="pop-box">
+        <h2 id="popTitle">提示</h2>
+        <p id="popMsg"></p>
+        <button onclick="closePop()">确定</button>
+    </div>
+</div>
+
+<script>
+// 基础常量
+const SIZE = 11;
+// 列映射 a=0 ~ k=10，行1对应数组下标0，行11对应下标10
+// 绿方起点2x2：k1 k2 j1 j2  (x列,y行)
+const greenBase = [[10,0],[10,1],[9,0],[9,1]];
+// 红方起点2x2：a11 a10 b11 b10
+const redBase = [[0,10],[0,9],[1,10],[1,9]];
+// 三个宝物坐标 [x,y,分值]
+const treasureList = [
+    [0,0,10],   // a1
+    [5,5,15],   // f6
+    [10,10,20]  // k11
+];
+// 8向移动方向
+const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+// 全局数据
+let mineMap = Array(SIZE).fill().map(()=>Array(SIZE).fill(false)); // 所有地雷
+let greenMineCount = 15;
+let redMineCount = 15;
+let greenPlacedMine = []; // 绿埋的雷坐标
+let redPlacedMine = [];   // 红埋的雷坐标
+let scoredGrid = Array(SIZE).fill().map(()=>Array(SIZE).fill(false)); // 是否拿过分
+let treasureGot = [false,false,false];
+let gameStage = "mineGreen"; // mineGreen / mineRed / battle / over
+let currentTurn = "green"; // battle阶段当前行动方
+let showAllMine = false; // 地雷显示开关
+// 玩家位置
+const player = {
+    green:{x:10,y:0,score:0}, // k1
+    red:{x:0,y:10,score:0}    // a11
+};
+let boardDom = document.getElementById("board");
+let cells = [];
+const toggleMineBtn = document.getElementById("toggleMineView");
+
+// 初始化棋盘
+function initBoard(){
+    boardDom.innerHTML = "";
+    cells = [];
+    for(let y=0;y<SIZE;y++){
+        for(let x=0;x<SIZE;x++){
+            let div = document.createElement("div");
+            div.className = "cell";
+            div.dataset.x = x;
+            div.dataset.y = y;
+            // 标记起点底色
+            if(greenBase.some(([bx,by])=>bx===x&&by===y)) div.classList.add("green-base");
+            if(redBase.some(([bx,by])=>bx===x&&by===y)) div.classList.add("red-base");
+            // 宝物格子
+            let treIdx = treasureList.findIndex(([tx,ty])=>tx===x&&ty===y);
+            if(treIdx !== -1 && !treasureGot[treIdx]) div.classList.add("treasure");
+            div.onclick = ()=>cellClick(x,y);
+            boardDom.appendChild(div);
+            cells.push(div);
+        }
+    }
+    renderPiece();
+    refreshMineVisual();
+}
+
+// 刷新地雷视觉显示
+function refreshMineVisual(){
+    document.querySelectorAll(".mine-mark").forEach(el=>el.classList.remove("mine-mark"));
+    if(showAllMine){
+        for(let y=0;y<SIZE;y++){
+            for(let x=0;x<SIZE;x++){
+                if(mineMap[y][x]) getCell(x,y).classList.add("mine-mark");
+            }
+        }
+    }
+}
+
+// 渲染棋子
+function renderPiece(){
+    document.querySelectorAll(".piece").forEach(p=>p.remove());
+    // 绿棋子
+    let gCell = getCell(player.green.x, player.green.y);
+    let gPiece = document.createElement("div");
+    gPiece.className = "piece green";
+    gCell.appendChild(gPiece);
+    // 红棋子
+    let rCell = getCell(player.red.x, player.red.y);
+    let rPiece = document.createElement("div");
+    rPiece.className = "piece red";
+    rCell.appendChild(rPiece);
+}
+
+function getCell(x,y){
+    return cells[y*SIZE + x];
+}
+
+// 格子点击事件
+function cellClick(x,y){
+    if(gameStage === "mineGreen"){
+        handleMinePlace(x,y,"green");
+    }else if(gameStage === "mineRed"){
+        handleMinePlace(x,y,"red");
+    }else if(gameStage === "battle"){
+        handleMove(x,y);
+    }
+}
+
+// 埋雷逻辑
+function handleMinePlace(x,y,side){
+    // 禁止在双方起点埋雷
+    let isGreenSafe = greenBase.some(([bx,by])=>bx===x&&by===y);
+    let isRedSafe = redBase.some(([bx,by])=>bx===x&&by===y);
+    if(isGreenSafe || isRedSafe){
+        showTip("起点区域禁止埋雷！");
+        return;
+    }
+    let mineArr, remain;
+    if(side === "green"){
+        mineArr = greenPlacedMine;
+        remain = greenMineCount;
+    }else{
+        mineArr = redPlacedMine;
+        remain = redMineCount;
+    }
+    // 判断是否已埋雷
+    let idx = mineArr.findIndex(([mx,my])=>mx===x&&my===y);
+    if(idx > -1){
+        // 取消埋雷
+        mineArr.splice(idx,1);
+        getCell(x,y).classList.remove("mine-mark");
+        side==="green" ? greenMineCount++ : redMineCount++;
+        updateMineTip();
+        return;
+    }
+    if(remain <= 0){
+        showTip("地雷已埋满15个！");
+        return;
+    }
+    // 放置地雷
+    mineArr.push([x,y]);
+    getCell(x,y).classList.add("mine-mark");
+    side==="green" ? greenMineCount-- : redMineCount--;
+    updateMineTip();
+}
+
+function updateMineTip(){
+    document.getElementById("greenMineTip").innerText = `埋雷剩余：${greenMineCount}`;
+    document.getElementById("redMineTip").innerText = `埋雷剩余：${redMineCount}`;
+}
+
+// 完成埋雷按钮
+document.getElementById("confirmMine").onclick = function(){
+    if(gameStage === "mineGreen"){
+        if(greenMineCount > 0){
+            showPop("提示", `你还有${greenMineCount}颗地雷未埋完`);
+            return;
+        }
+        // 合并绿方地雷到总地图
+        greenPlacedMine.forEach(([x,y])=>mineMap[y][x]=true);
+        gameStage = "mineRed";
+        document.getElementById("stageText").innerText = "红方埋雷阶段";
+        showTip("切换红方埋雷，绿方地雷已隐藏");
+        // 清除全部地雷视觉标记（修复bug）
+        showAllMine = false;
+        refreshMineVisual();
+    }else if(gameStage === "mineRed"){
+        if(redMineCount > 0){
+            showPop("提示", `你还有${redMineCount}颗地雷未埋完`);
+            return;
+        }
+        redPlacedMine.forEach(([x,y])=>mineMap[y][x]=true);
+        gameStage = "battle";
+        currentTurn = "green";
+        document.getElementById("stageText").innerText = "对战阶段 | 绿方行动回合";
+        document.getElementById("confirmMine").style.display = "none";
+        document.getElementById("greenMineTip").style.display = "none";
+        document.getElementById("redMineTip").style.display = "none";
+        // 显示地雷切换按钮
+        toggleMineBtn.style.display = "inline-block";
+        showAllMine = false;
+        refreshMineVisual();
+        toggleMineBtn.innerText = "显示地雷";
+        showTip("对战开始，绿方先行，点击8相邻格子移动棋子");
+    }
+}
+
+// 地雷显示/隐藏切换按钮
+toggleMineBtn.onclick = function(){
+    if(gameStage !== "battle") return;
+    showAllMine = !showAllMine;
+    refreshMineVisual();
+    toggleMineBtn.innerText = showAllMine ? "隐藏地雷" : "显示地雷";
+}
+
+// 移动逻辑
+function handleMove(targetX, targetY){
+    if(gameStage !== "battle") return;
+    let self = currentTurn === "green" ? player.green : player.red;
+    let sx = self.x, sy = self.y;
+    // 判断是否8向相邻一格
+    let isNear = false;
+    for(let [dx,dy] of dirs){
+        if(sx+dx === targetX && sy+dy === targetY){
+            isNear = true;
+            break;
+        }
+    }
+    if(!isNear){
+        showTip("只能移动到相邻8格！");
+        return;
+    }
+    // 判断是否踩地雷
+    let hitMine = mineMap[targetY][targetX];
+    if(hitMine){
+        // 扣分，返回出生点，清除当前格子地雷（新增需求）
+        self.score -=5;
+        mineMap[targetY][targetX] = false; // 地雷永久清除
+        refreshMineVisual();
+        if(currentTurn === "green"){
+            self.x = 10; self.y = 0;
+        }else{
+            self.x = 0; self.y = 10;
+        }
+        updateScore();
+        renderPiece();
+        showPop("踩地雷！","扣5分，该地雷永久销毁，棋子返回起点");
+        switchTurn();
+        return;
+    }
+    // 安全格子，计算周围地雷分（仅首次）
+    if(!scoredGrid[targetY][targetX]){
+        let cnt = countSurroundMine(targetX, targetY);
+        self.score += cnt;
+        scoredGrid[targetY][targetX] = true;
+    }
+    // 更新棋子位置
+    self.x = targetX;
+    self.y = targetY;
+    renderPiece();
+    updateScore();
+    // 判断是否拾取宝物
+    let treIdx = treasureList.findIndex(([tx,ty])=>tx===targetX&&ty===targetY);
+    if(treIdx !== -1 && !treasureGot[treIdx]){
+        treasureGot[treIdx] = true;
+        let add = treasureList[treIdx][2];
+        self.score += add;
+        updateScore();
+        // 清除宝物样式
+        getCell(targetX, targetY).classList.remove("treasure");
+        updateTreasureLeft();
+        showPop("拾取宝物！", `获得${add}分`);
+        // 判断是否全部捡完，游戏结束
+        if(treasureGot.every(v=>v===true)){
+            gameOver();
+            return;
+        }
+    }
+    switchTurn();
+}
+
+// 统计8邻域地雷数
+function countSurroundMine(x,y){
+    let c = 0;
+    for(let [dx,dy] of dirs){
+        let nx = x+dx, ny = y+dy;
+        if(nx>=0&&nx<SIZE&&ny>=0&&ny<SIZE){
+            if(mineMap[ny][nx]) c++;
+        }
+    }
+    return c;
+}
+
+// 切换回合
+function switchTurn(){
+    if(currentTurn === "green"){
+        currentTurn = "red";
+        document.getElementById("stageText").innerText = "对战阶段 | 红方行动回合";
+        showTip("红方回合，请移动棋子");
+    }else{
+        currentTurn = "green";
+        document.getElementById("stageText").innerText = "对战阶段 | 绿方行动回合";
+        showTip("绿方回合，请移动棋子");
+    }
+}
+
+// 更新分数显示
+function updateScore(){
+    document.getElementById("greenScore").innerText = player.green.score;
+    document.getElementById("redScore").innerText = player.red.score;
+}
+
+// 更新剩余宝物
+function updateTreasureLeft(){
+    let left = treasureGot.filter(v=>!v).length;
+    document.getElementById("treasureLeft").innerText = left;
+}
+
+// 游戏结束结算
+function gameOver(){
+    gameStage = "over";
+    let g = player.green.score;
+    let r = player.red.score;
+    let msg = "";
+    if(g > r) msg = `绿方胜利！绿：${g} 红：${r}`;
+    else if(r > g) msg = `红方胜利！绿：${g} 红：${r}`;
+    else msg = `平局！双方分数均为${g}`;
+    showPop("游戏结束", msg);
+}
+
+// 弹窗
+function showPop(title,msg){
+    document.getElementById("popTitle").innerText = title;
+    document.getElementById("popMsg").innerText = msg;
+    document.getElementById("popBox").style.display = "flex";
+}
+function closePop(){
+    document.getElementById("popBox").style.display = "none";
+}
+function showTip(str){
+    document.getElementById("tip").innerText = str;
+}
+
+// 重新开局
+document.getElementById("restart").onclick = function(){
+    location.reload();
+}
+
+// 页面加载初始化
+window.onload = function(){
+    initBoard();
+    updateMineTip();
+    updateScore();
+    updateTreasureLeft();
+    showTip("绿方先埋雷，点击格子放置/取消地雷，满15颗点完成埋雷");
+}
+</script>
+</body>
+</html>
