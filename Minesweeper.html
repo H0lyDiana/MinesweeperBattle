@@ -2,41 +2,161 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>11x11地雷寻宝回合对战（修复版）</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui}
-body{background:#1a1a2e;color:#fff;padding:20px;display:flex;flex-direction:column;align-items:center}
-.info-bar{width:100%;max-width:700px;margin-bottom:12px;display:flex;justify-content:space-between;background:#16213e;padding:12px 16px;border-radius:8px}
-.player-info{text-align:center}
-.green{color:#4ade80;font-weight:bold}
-.red{color:#f87171;font-weight:bold}
-.tip-text{margin:8px 0 16px;height:24px;font-size:18px}
-#board{display:grid;grid-template-columns:repeat(11,44px);gap:1px;background:#333;padding:1px;border-radius:4px}
-.cell{width:44px;height:44px;background:#222;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:10px;color:#aaa}
+:root{--ink:#0b0b0b;--paper:#f2f2f2;--p5red:#e60012;--gold:#ffd400;--sgreen:#0f7a3d;--sred:#c1121f;--lgreen:#4ade80;--lred:#f87171}
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+button,.side h3,.pop-box h2,.tip-text,.legend,.player-info .green,.player-info .red{font-family:"Arial Black",Impact,"Microsoft YaHei",system-ui,sans-serif}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
+body{background:var(--ink);background-image:repeating-linear-gradient(-45deg,rgba(230,0,18,.08) 0 10px,transparent 10px 32px);color:var(--paper);padding:24px;overflow-x:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+/* 主区 + 右侧分数记录 */
+.app{display:flex;gap:24px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.main{display:flex;flex-direction:column;align-items:center}
+.side{width:280px;background:var(--paper);border:3px solid var(--ink);box-shadow:8px 8px 0 var(--p5red);display:flex;flex-direction:column;max-height:690px}
+.side h3{background:var(--p5red);color:#fff;font-size:15px;font-weight:900;font-style:italic;letter-spacing:2px;padding:9px 14px;border-bottom:3px solid var(--ink)}
+.log-list{list-style:none;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px;padding:10px}
+.log-item{font-size:13px;line-height:1.5;padding:7px 9px;background:#fff;border-left:6px solid var(--ink);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
+/* 最新一条记录高亮（黑底反白，P5 式强调） */
+.log-new{background:var(--ink);color:var(--paper);animation:logPop .3s ease-out}
+@keyframes logPop{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
+.log-empty{color:#999;font-size:13px;font-weight:600;padding:6px 2px}
+.log-green{border-left-color:var(--sgreen)}
+.log-red{border-left-color:var(--sred)}
+.log-side{font-weight:900}
+.log-green .log-side{color:var(--sgreen)}
+.log-red .log-side{color:var(--sred)}
+.log-delta{margin-left:auto;font-weight:900}
+.log-green .log-delta{color:var(--sgreen)}
+.log-red .log-delta{color:var(--sred)}
+.log-total{width:100%;font-size:12px;color:#777}
+.log-new.log-green{border-left-color:var(--lgreen)}
+.log-new.log-red{border-left-color:var(--lred)}
+.log-new.log-green .log-side,.log-new.log-green .log-delta{color:var(--lgreen)}
+.log-new.log-red .log-side,.log-new.log-red .log-delta{color:var(--lred)}
+.log-new .log-total{color:#b9b9b9}
+.info-bar{width:100%;max-width:720px;margin-bottom:14px;display:flex;justify-content:space-between;background:var(--paper);border:3px solid var(--ink);box-shadow:8px 8px 0 var(--p5red)}
+.player-info{flex:1;text-align:center;padding:10px 8px;border-right:3px solid var(--ink);color:#333;font-size:13px;font-weight:600}
+.player-info:last-child{border-right:none}
+.player-info .green,.player-info .red{font-size:17px;font-weight:900;font-style:italic;letter-spacing:2px;margin-bottom:3px}
+.player-info .green{color:var(--sgreen)}
+.player-info .red{color:var(--sred)}
+/* 顶部「地雷剩余」：按格子统计，同格叠雷只算 1 */
+.mine-total{color:var(--ink);font-weight:900;font-style:italic;letter-spacing:1px;margin-bottom:2px}
+.mine-total #mineLeft{color:var(--p5red);font-size:16px}
+/* 埋雷阶段不显示地雷剩余：用 visibility 占位，保持信息栏三列行高对齐 */
+.mine-total.hide{visibility:hidden}
+#stageText{color:var(--ink);font-weight:900}
+.tip-text{margin:0 0 16px;width:100%;max-width:720px;min-height:44px;background:var(--p5red);color:#fff;border:3px solid var(--ink);box-shadow:6px 6px 0 var(--paper);padding:8px 16px;font-size:16px;font-weight:900;font-style:italic;letter-spacing:.5px;text-align:center;display:flex;align-items:center;justify-content:center;transform:skewX(-6deg)}
+/* --cell 为单格边长，由视口宽度推导，桌面封顶 44px */
+#board{--cell:44px;display:grid;grid-template-columns:repeat(11,var(--cell));gap:2px;background:#000;padding:4px;border:4px solid var(--paper);box-shadow:10px 10px 0 var(--p5red);touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.cell{width:var(--cell);height:var(--cell);background:#161616;border:1px solid #343434;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:10px;color:#8a8a8a;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 /* 起点区域底色 */
-.cell.green-base{background:#164028}
-.cell.red-base{background:#601818}
-/* 宝物样式 */
-.cell.treasure{background:#776100}
+.cell.green-base{background:#0f5132;border-color:#22c55e}
+.cell.red-base{background:#7f1d1d;border-color:#ef4444}
+/* 宝石样式 */
+.cell.treasure{background:#8a6d00;border-color:var(--gold)}
 .cell.treasure::after{content:"💎";font-size:22px}
-/* 棋子 */
-.piece{width:22px;height:22px;border-radius:50%;position:absolute;z-index:2}
-.piece.green{background:#4ade80;border:2px solid #fff}
-.piece.red{background:#f87171;border:2px solid #fff}
-/* 埋雷阶段己方地雷标记 */
-.cell.mine-mark::before{content:"💣";font-size:18px}
-.ctrl-area{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-button{padding:10px 24px;font-size:16px;border:none;border-radius:6px;cursor:pointer;margin:0 6px}
-#confirmMine{background:#2563eb;color:#fff}
-#restart{background:#666;color:#fff}
-#toggleMineView{background:#92400e;color:#fff;display:none}
-.pop{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:99}
-.pop-box{background:#16213e;padding:30px;border-radius:10px;text-align:center;max-width:400px}
-.pop-box h2{margin-bottom:16px}
-.pop-box button{margin-top:12px}
+/* 棋子（P5 式菱形） */
+.piece{width:clamp(13px,46%,22px);height:clamp(13px,46%,22px);position:absolute;z-index:2;border-radius:0;transform:rotate(45deg);box-shadow:0 0 0 2px #fff}
+.piece.green{background:#22c55e;border:2px solid var(--ink)}
+.piece.red{background:#ef4444;border:2px solid var(--ink)}
+/* 地雷标记：绿雷 / 红雷 / 双雷（使用目录下的图片） */
+.cell.mine-green::before,.cell.mine-red::before,.cell.mine-both::before{
+    content:"";position:absolute;width:clamp(14px,64%,28px);height:clamp(14px,64%,28px);z-index:1;
+    background-repeat:no-repeat;background-position:center;background-size:contain;
+    filter:drop-shadow(0 0 2px rgba(255,255,255,.75));
+}
+.cell.mine-green::before{background-image:url("GreenMine.png")}
+.cell.mine-red::before{background-image:url("RedMine.png")}
+.cell.mine-both::before{background-image:url("RGMine.png")}
+/* 图例 */
+.legend{margin-top:16px;display:flex;gap:22px;font-size:13px;color:var(--paper);font-weight:900;font-style:italic;letter-spacing:1px;flex-wrap:wrap;justify-content:center}
+.legend span{display:flex;align-items:center;gap:7px}
+.legend i{width:20px;height:20px;display:inline-block;background-repeat:no-repeat;background-position:center;background-size:contain}
+.legend i.g{background-image:url("GreenMine.png")}
+.legend i.r{background-image:url("RedMine.png")}
+.legend i.b{background-image:url("RGMine.png")}
+/* 踩雷爆炸特效 */
+@keyframes boomFire{0%{transform:scale(.15);opacity:1}60%{opacity:.9}100%{transform:scale(2.1);opacity:0}}
+@keyframes boomRing{0%{transform:scale(.2);opacity:.95}100%{transform:scale(2.5);opacity:0}}
+@keyframes boardShake{0%,100%{transform:translate(0,0)}20%{transform:translate(-3px,2px)}40%{transform:translate(3px,-2px)}60%{transform:translate(-2px,-2px)}80%{transform:translate(2px,2px)}}
+.boom{position:absolute;left:15%;top:15%;width:70%;height:70%;border-radius:50%;pointer-events:none;z-index:3;
+    background:radial-gradient(circle,#fff7cc 0%,#ffc93c 30%,#ff6a1f 55%,rgba(255,106,31,0) 70%);
+    animation:boomFire .55s ease-out forwards}
+.boom-ring{position:absolute;left:15%;top:15%;width:70%;height:70%;border-radius:50%;pointer-events:none;z-index:3;
+    border:3px solid #ffb020;animation:boomRing .55s ease-out forwards}
+#board.shake{animation:boardShake .3s ease-in-out}
+/* 拾取宝石特效 */
+@keyframes gemFlash{0%{transform:scale(.2) rotate(0deg);opacity:1}70%{opacity:.9}100%{transform:scale(1.9) rotate(100deg);opacity:0}}
+@keyframes gemRing{0%{transform:scale(.2);opacity:.9}100%{transform:scale(2.4);opacity:0}}
+@keyframes gemScore{0%{transform:translate(-50%,0) scale(.6);opacity:0}25%{transform:translate(-50%,-8px) scale(1.15);opacity:1}100%{transform:translate(-50%,-40px) scale(1);opacity:0}}
+.gem-fx{position:absolute;left:15%;top:15%;width:70%;height:70%;border-radius:50%;pointer-events:none;z-index:4;
+    background:radial-gradient(circle,#ffffff 0%,#a5f3fc 30%,#67e8f9 52%,rgba(103,232,249,0) 70%);
+    animation:gemFlash .6s ease-out forwards}
+.gem-ring{position:absolute;left:15%;top:15%;width:70%;height:70%;border-radius:50%;pointer-events:none;z-index:4;
+    border:3px solid var(--gold);animation:gemRing .6s ease-out forwards}
+.gem-score{position:absolute;left:50%;top:4px;font-size:clamp(11px,3.4vw,15px);font-weight:900;font-style:italic;pointer-events:none;z-index:5;
+    text-shadow:0 0 6px rgba(0,0,0,.95),0 0 3px rgba(255,255,255,.85);animation:gemScore .95s ease-out forwards}
+.gem-score-green{color:var(--lgreen)}
+.gem-score-red{color:var(--lred)}
+.ctrl-area{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+button{padding:11px 26px;font-size:15px;font-weight:900;font-style:italic;letter-spacing:1px;color:var(--ink);
+    border:3px solid var(--ink);border-radius:0;cursor:pointer;margin:0 6px;background:var(--paper);
+    box-shadow:5px 5px 0 var(--p5red);transform:skewX(-10deg);transition:transform .1s,box-shadow .1s}
+button:active{transform:skewX(-10deg) translate(4px,4px);box-shadow:1px 1px 0 var(--p5red)}
+#confirmMine{background:var(--p5red);color:#fff;box-shadow:5px 5px 0 var(--paper)}
+#confirmMine:active{box-shadow:1px 1px 0 var(--paper)}
+#restart{background:var(--paper);color:var(--ink)}
+#toggleMineView{background:var(--gold);color:var(--ink);display:none}
+.pop{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;z-index:99;padding:16px}
+.pop-box{background:var(--paper);border:4px solid var(--ink);box-shadow:12px 12px 0 var(--p5red);padding:0;text-align:center;max-width:min(400px,90vw);min-width:min(300px,80vw)}
+.pop-box h2{background:var(--p5red);color:#fff;font-size:19px;font-weight:900;font-style:italic;letter-spacing:2px;padding:11px 12px;border-bottom:4px solid var(--ink)}
+.pop-box p{padding:22px;color:#111;font-size:15px;font-weight:700}
+.pop-box button{margin:0 0 24px;background:var(--ink);color:var(--paper);box-shadow:5px 5px 0 var(--p5red)}
+.pop-box button:active{box-shadow:1px 1px 0 var(--p5red)}
+
+/* ===== 移动端 / 触屏适配 ===== */
+/* 触屏设备不保留 :hover 粘滞状态（点过的格子不会一直亮着） */
+@media (hover:hover) and (pointer:fine){
+    .cell:hover{background:#262626}
+    button:hover{filter:brightness(1.08)}
+}
+/* 窄屏：主区与记录面板改为上下堆叠，棋盘按视口宽度缩小 */
+@media (max-width:900px){
+    body{padding:14px 12px calc(18px + env(safe-area-inset-bottom))}
+    .app{flex-direction:column;align-items:center;gap:18px}
+    .main,.side{width:100%}
+    /* 11 格 + 间隙/内边距/边框共约 60px，留 2px 余量自适应 */
+    #board{--cell:clamp(22px,calc((100vw - 62px)/11),44px);box-shadow:6px 6px 0 var(--p5red)}
+    .info-bar{box-shadow:5px 5px 0 var(--p5red);margin-bottom:10px}
+    .player-info{font-size:11.5px;padding:8px 4px}
+    .player-info .green,.player-info .red{font-size:15px;letter-spacing:1px;margin-bottom:2px}
+    .tip-text{box-shadow:4px 4px 0 var(--paper);font-size:14px;min-height:38px;padding:7px 10px;letter-spacing:0;margin-bottom:12px}
+    .legend{gap:12px;font-size:11.5px;letter-spacing:0;margin-top:12px}
+    .legend i{width:18px;height:18px}
+    .ctrl-area{margin-top:16px;gap:8px}
+    button{padding:11px 16px;font-size:14px;letter-spacing:0;margin:0}
+    /* 格子变小后描边按比例减细，避免棋子/图标被边框吃掉 */
+    .piece.green,.piece.red{border-width:1.5px}
+    .piece{box-shadow:0 0 0 1.5px #fff}
+    .side{max-height:none}
+    .log-list{max-height:220px}
+    .pop-box h2{font-size:17px;letter-spacing:1px}
+    .pop-box p{font-size:14px;padding:18px}
+    .pop-box button{margin-bottom:20px}
+}
+/* 超窄屏（<=380px）：进一步压缩字号，保证三按钮不换行挤压 */
+@media (max-width:380px){
+    .player-info{font-size:11px}
+    button{padding:10px 12px;font-size:13px}
+    .tip-text{font-size:13px}
+}
 </style>
 </head>
 <body>
+<div class="app">
+<div class="main">
 <div class="info-bar">
     <div class="player-info">
         <div class="green">绿方</div>
@@ -44,7 +164,8 @@ button{padding:10px 24px;font-size:16px;border:none;border-radius:6px;cursor:poi
         <div id="greenMineTip">埋雷剩余：15</div>
     </div>
     <div class="player-info">
-        <div>宝物剩余：<span id="treasureLeft">3</span>/3</div>
+        <div class="mine-total hide" id="mineTotalRow">地雷剩余：<span id="mineLeft">0</span></div>
+        <div>宝石剩余：<span id="treasureLeft">3</span>/3</div>
         <div id="stageText">绿方埋雷阶段</div>
     </div>
     <div class="player-info">
@@ -55,10 +176,21 @@ button{padding:10px 24px;font-size:16px;border:none;border-radius:6px;cursor:poi
 </div>
 <div class="tip-text" id="tip"></div>
 <div id="board"></div>
+<div class="legend">
+    <span><i class="g"></i>绿方雷</span>
+    <span><i class="r"></i>红方雷</span>
+    <span><i class="b"></i>双方雷（同格叠雷）</span>
+</div>
 <div class="ctrl-area">
     <button id="confirmMine">完成埋雷</button>
     <button id="toggleMineView">显示地雷</button>
     <button id="restart">重新开局</button>
+</div>
+</div>
+<aside class="side">
+    <h3>分数记录</h3>
+    <ul id="logList" class="log-list"><li class="log-empty">暂无记录</li></ul>
+</aside>
 </div>
 
 <!-- 弹窗 -->
@@ -78,17 +210,20 @@ const SIZE = 11;
 const greenBase = [[10,0],[10,1],[9,0],[9,1]];
 // 红方起点2x2：a11 a10 b11 b10
 const redBase = [[0,10],[0,9],[1,10],[1,9]];
-// 三个宝物坐标 [x,y,分值]
+// 三个宝石坐标 [x,y]（分值不再绑定位置）
 const treasureList = [
-    [0,0,10],   // a1
-    [5,5,15],   // f6
-    [10,10,20]  // k11
+    [0,0],   // a1
+    [5,5],   // f6
+    [10,10]  // k11
 ];
+// 宝石分值按拾取顺序依次给付（第1颗10分，第2颗15分，第3颗20分）
+const treasureScores = [10,15,20];
 // 8向移动方向
 const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 
 // 全局数据
-let mineMap = Array(SIZE).fill().map(()=>Array(SIZE).fill(false)); // 所有地雷
+// 所有地雷：每格记录归属，g=绿方雷(0/1)，r=红方雷(0/1)，双方同格即为叠雷
+let mineMap = Array(SIZE).fill().map(()=>Array(SIZE).fill(null).map(()=>({g:0,r:0})));
 let greenMineCount = 15;
 let redMineCount = 15;
 let greenPlacedMine = []; // 绿埋的雷坐标
@@ -132,13 +267,55 @@ function initBoard(){
     refreshMineVisual();
 }
 
-// 刷新地雷视觉显示
+// 拾取宝石特效（不弹提示窗）：闪光 + 金色光环 + 上浮的加分数
+function playGemFx(x,y,add,side){
+    let cell = getCell(x,y);
+    let flash = document.createElement("div");
+    flash.className = "gem-fx";
+    let ring = document.createElement("div");
+    ring.className = "gem-ring";
+    let txt = document.createElement("div");
+    txt.className = "gem-score " + (side === "green" ? "gem-score-green" : "gem-score-red");
+    txt.innerText = "+" + add;
+    cell.appendChild(flash);
+    cell.appendChild(ring);
+    cell.appendChild(txt);
+    setTimeout(()=>{ flash.remove(); ring.remove(); txt.remove(); }, 1000);
+}
+
+// 踩雷爆炸特效（不弹提示窗）
+function playBoom(x,y){
+    let cell = getCell(x,y);
+    let fire = document.createElement("div");
+    fire.className = "boom";
+    let ring = document.createElement("div");
+    ring.className = "boom-ring";
+    cell.appendChild(fire);
+    cell.appendChild(ring);
+    setTimeout(()=>{ fire.remove(); ring.remove(); }, 600);
+    // 棋盘轻微震动（先移除再添加以重启动画）
+    boardDom.classList.remove("shake");
+    void boardDom.offsetWidth;
+    boardDom.classList.add("shake");
+    setTimeout(()=>boardDom.classList.remove("shake"), 320);
+}
+
+// 按归属给格子涂地雷标记
+function paintMine(cell, m){
+    cell.classList.remove("mine-green","mine-red","mine-both");
+    if(m.g && m.r) cell.classList.add("mine-both");
+    else if(m.g) cell.classList.add("mine-green");
+    else if(m.r) cell.classList.add("mine-red");
+}
+
+// 刷新地雷视觉显示（区分绿雷/红雷/双雷）
 function refreshMineVisual(){
-    document.querySelectorAll(".mine-mark").forEach(el=>el.classList.remove("mine-mark"));
+    document.querySelectorAll(".mine-green,.mine-red,.mine-both").forEach(el=>
+        el.classList.remove("mine-green","mine-red","mine-both"));
     if(showAllMine){
         for(let y=0;y<SIZE;y++){
             for(let x=0;x<SIZE;x++){
-                if(mineMap[y][x]) getCell(x,y).classList.add("mine-mark");
+                paintMine(getCell(x,y), mineMap[y][x]);
             }
         }
     }
@@ -196,7 +373,7 @@ function handleMinePlace(x,y,side){
     if(idx > -1){
         // 取消埋雷
         mineArr.splice(idx,1);
-        getCell(x,y).classList.remove("mine-mark");
+        getCell(x,y).classList.remove(side==="green" ? "mine-green" : "mine-red");
         side==="green" ? greenMineCount++ : redMineCount++;
         updateMineTip();
         return;
@@ -205,9 +382,9 @@ function handleMinePlace(x,y,side){
         showTip("地雷已埋满15个！");
         return;
     }
-    // 放置地雷
+    // 放置地雷（以己方颜色显示）
     mineArr.push([x,y]);
-    getCell(x,y).classList.add("mine-mark");
+    getCell(x,y).classList.add(side==="green" ? "mine-green" : "mine-red");
     side==="green" ? greenMineCount-- : redMineCount--;
     updateMineTip();
 }
@@ -215,6 +392,30 @@ function handleMinePlace(x,y,side){
 function updateMineTip(){
     document.getElementById("greenMineTip").innerText = `埋雷剩余：${greenMineCount}`;
     document.getElementById("redMineTip").innerText = `埋雷剩余：${redMineCount}`;
+    updateMineLeft();
+}
+
+// 统计棋盘上「还有地雷的格子数」——同格叠雷（双方各1颗）只算 1 格
+function countMineCells(){
+    let set = new Set();
+    for(let y=0;y<SIZE;y++){
+        for(let x=0;x<SIZE;x++){
+            if(mineMap[y][x].g || mineMap[y][x].r) set.add(y*SIZE+x);
+        }
+    }
+    // 埋雷阶段尚未合并进总图的临时地雷
+    let pending = gameStage === "mineGreen" ? greenPlacedMine
+                : gameStage === "mineRed"   ? redPlacedMine
+                : [];
+    pending.forEach(([x,y])=>set.add(y*SIZE+x));
+    return set.size;
+}
+
+function updateMineLeft(){
+    // 仅对战阶段显示「地雷剩余」，埋雷阶段隐藏（保留占位以维持信息栏行高对齐）
+    let inBattle = gameStage === "battle" || gameStage === "over";
+    document.getElementById("mineTotalRow").classList.toggle("hide", !inBattle);
+    document.getElementById("mineLeft").innerText = countMineCells();
 }
 
 // 完成埋雷按钮
@@ -225,8 +426,9 @@ document.getElementById("confirmMine").onclick = function(){
             return;
         }
         // 合并绿方地雷到总地图
-        greenPlacedMine.forEach(([x,y])=>mineMap[y][x]=true);
+        greenPlacedMine.forEach(([x,y])=>mineMap[y][x].g = 1);
         gameStage = "mineRed";
+        updateMineLeft();
         document.getElementById("stageText").innerText = "红方埋雷阶段";
         showTip("切换红方埋雷，绿方地雷已隐藏");
         // 清除全部地雷视觉标记（修复bug）
@@ -237,8 +439,9 @@ document.getElementById("confirmMine").onclick = function(){
             showPop("提示", `你还有${redMineCount}颗地雷未埋完`);
             return;
         }
-        redPlacedMine.forEach(([x,y])=>mineMap[y][x]=true);
+        redPlacedMine.forEach(([x,y])=>mineMap[y][x].r = 1);
         gameStage = "battle";
+        updateMineLeft();
         currentTurn = "green";
         document.getElementById("stageText").innerText = "对战阶段 | 绿方行动回合";
         document.getElementById("confirmMine").style.display = "none";
@@ -249,7 +452,7 @@ document.getElementById("confirmMine").onclick = function(){
         showAllMine = false;
         refreshMineVisual();
         toggleMineBtn.innerText = "显示地雷";
-        showTip("对战开始，绿方先行，点击8相邻格子移动棋子");
+        showTip("对战开始，绿方先行，点击8相邻格子移动（不能走到对方棋子上）");
     }
 }
 
@@ -278,13 +481,21 @@ function handleMove(targetX, targetY){
         showTip("只能移动到相邻8格！");
         return;
     }
-    // 判断是否踩地雷
-    let hitMine = mineMap[targetY][targetX];
-    if(hitMine){
-        // 扣分，返回出生点，清除当前格子地雷（新增需求）
-        self.score -=5;
-        mineMap[targetY][targetX] = false; // 地雷永久清除
+    // 不能移动到对方棋子上
+    let enemy = currentTurn === "green" ? player.red : player.green;
+    if(targetX === enemy.x && targetY === enemy.y){
+        showTip("不能移动到对方棋子上！");
+        return;
+    }
+    // 判断是否踩地雷（同一格可能双方各埋1颗，扣分固定-5，地雷全部清除）
+    let hitCell = mineMap[targetY][targetX];
+    let mineCount = hitCell.g + hitCell.r;
+    if(mineCount > 0){
+        // 扣分，返回出生点，该格地雷全部清除
+        self.score -= 5;
+        hitCell.g = 0; hitCell.r = 0; // 地雷永久清除（叠雷时同时清除）
         refreshMineVisual();
+        updateMineLeft();
         if(currentTurn === "green"){
             self.x = 10; self.y = 0;
         }else{
@@ -292,8 +503,9 @@ function handleMove(targetX, targetY){
         }
         updateScore();
         renderPiece();
-        showPop("踩地雷！","扣5分，该地雷永久销毁，棋子返回起点");
-        switchTurn();
+        addLog(currentTurn, mineCount > 1 ? "踩雷（双方雷，返回起点）" : "踩雷（返回起点）", -5);
+        playBoom(targetX, targetY); // 只播爆炸特效，不弹提示
+        // 踩雷不换手：可再次移动
         return;
     }
     // 安全格子，计算周围地雷分（仅首次）
@@ -301,23 +513,26 @@ function handleMove(targetX, targetY){
         let cnt = countSurroundMine(targetX, targetY);
         self.score += cnt;
         scoredGrid[targetY][targetX] = true;
+        if(cnt > 0) addLog(currentTurn, `安全格（周围${cnt}雷）`, cnt);
     }
     // 更新棋子位置
     self.x = targetX;
     self.y = targetY;
     renderPiece();
     updateScore();
-    // 判断是否拾取宝物
+    // 判断是否拾取宝石（分值按拾取顺序给付，与位置无关）
     let treIdx = treasureList.findIndex(([tx,ty])=>tx===targetX&&ty===targetY);
     if(treIdx !== -1 && !treasureGot[treIdx]){
+        let order = treasureGot.filter(v=>v).length; // 这是第几颗被捡到（0/1/2）
         treasureGot[treIdx] = true;
-        let add = treasureList[treIdx][2];
+        let add = treasureScores[order];
         self.score += add;
         updateScore();
-        // 清除宝物样式
+        addLog(currentTurn, `拾取宝石（第${order+1}颗）`, add);
+        // 清除宝石样式
         getCell(targetX, targetY).classList.remove("treasure");
         updateTreasureLeft();
-        showPop("拾取宝物！", `获得${add}分`);
+        playGemFx(targetX, targetY, add, currentTurn); // 特效代替弹窗
         // 判断是否全部捡完，游戏结束
         if(treasureGot.every(v=>v===true)){
             gameOver();
@@ -327,13 +542,13 @@ function handleMove(targetX, targetY){
     switchTurn();
 }
 
-// 统计8邻域地雷数
+// 统计8邻域地雷数（叠雷格按双方雷数累计）
 function countSurroundMine(x,y){
     let c = 0;
     for(let [dx,dy] of dirs){
         let nx = x+dx, ny = y+dy;
         if(nx>=0&&nx<SIZE&&ny>=0&&ny<SIZE){
-            if(mineMap[ny][nx]) c++;
+            c += mineMap[ny][nx].g + mineMap[ny][nx].r;
         }
     }
     return c;
@@ -387,6 +602,36 @@ function closePop(){
 }
 function showTip(str){
     document.getElementById("tip").innerText = str;
+}
+
+// 右侧分数记录：side 绿/红，text 事件描述，delta 分数变化
+function addLog(side, text, delta){
+    let list = document.getElementById("logList");
+    let empty = list.querySelector(".log-empty");
+    if(empty) empty.remove();
+    let sc = side === "green" ? player.green.score : player.red.score;
+    let li = document.createElement("li");
+    li.className = "log-item " + (side === "green" ? "log-green" : "log-red");
+    let sideEl = document.createElement("span");
+    sideEl.className = "log-side";
+    sideEl.innerText = side === "green" ? "绿方" : "红方";
+    let actEl = document.createElement("span");
+    actEl.className = "log-act";
+    actEl.innerText = text;
+    let deltaEl = document.createElement("span");
+    deltaEl.className = "log-delta";
+    deltaEl.innerText = delta > 0 ? "+" + delta : String(delta);
+    let totalEl = document.createElement("span");
+    totalEl.className = "log-total";
+    totalEl.innerText = "总分 " + sc;
+    li.appendChild(sideEl);
+    li.appendChild(actEl);
+    li.appendChild(deltaEl);
+    li.appendChild(totalEl);
+    // 只高亮最新一条
+    Array.from(list.children).forEach(el=>el.classList.remove("log-new"));
+    li.classList.add("log-new");
+    list.insertBefore(li, list.firstChild); // 最新记录置顶
 }
 
 // 重新开局
