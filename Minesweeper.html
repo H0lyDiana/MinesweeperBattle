@@ -4,74 +4,183 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>扫雷对战</title>
+<!-- 皮肤：样式渲染前先套用上次选择，避免刷新闪屏 -->
+<script>
+(function(){
+    var skins = ["neon","p5","matrix","classic"];
+    var saved = null;
+    try{ saved = localStorage.getItem("minesweeper.skin"); }catch(e){}
+    document.documentElement.setAttribute("data-skin", skins.indexOf(saved) > -1 ? saved : "neon");
+})();
+</script>
 <style>
-:root{--ink:#0b0b0b;--paper:#f2f2f2;--p5red:#e60012;--gold:#ffd400;--sgreen:#0f7a3d;--sred:#c1121f;--lgreen:#4ade80;--lred:#f87171}
-*{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif}
-button,.side h3,.pop-box h2,.tip-text,.legend,.player-info .green,.player-info .red{font-family:"Arial Black",Impact,"Microsoft YaHei",system-ui,sans-serif}
+/* ===== 皮肤系统 =====
+   配色 / 阴影 / 倾斜 / 字体全部由 CSS 变量驱动：
+   只要切换 <html data-skin="..."> 就能整体换肤。
+   默认皮肤：霓虹暗夜（neon）；另有 P5 红黑、矩阵终端、经典复古。 */
+:root{
+    /* 结构变量：字体 / 倾斜 / 圆角 */
+    --font-ui:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    --font-display:"Arial Black",Impact,"Microsoft YaHei",system-ui,sans-serif;
+    --skew-tip:-6deg;--skew-btn:-10deg;--radius-btn:0;
+    /* ↓ 以下为默认皮肤「霓虹暗夜」 */
+    --accent:#22d3ee;--accent-2:#f472b6;--on-accent:#031420;--on-accent-2:#2a0a1c;
+    --body-bg:#060b16;--body-stripe:rgba(34,211,238,.055);--body-text:#dbeafe;
+    --panel-bg:#0d1729;--panel-text:#d6e9ff;--panel-muted:#7b9dc4;
+    --border:#21406b;--btn-border:#2d6b8f;
+    --log-bg:#0a1424;--log-new-bg:#123a5c;--log-new-text:#eaf6ff;--log-new-muted:#a7c8e8;
+    --board-bg:#02060e;--board-frame:#1b3a63;
+    --cell-bg:#0a1526;--cell-border:#1d3757;--cell-hover:#14294a;--cell-glyph:#5d80a8;
+    --cell-green-bg:#04382c;--cell-green-border:#2dd4bf;
+    --cell-red-bg:#3b0f24;--cell-red-border:#fb7185;
+    --cell-treasure-bg:#5b4708;
+    --green:#22c55e;--red:#ef4444;--green-dark:#34d399;--red-dark:#fb7185;
+    --green-light:#6ee7b7;--red-light:#fda4af;
+    --piece-ring:#e6faff;--mine-filter:drop-shadow(0 0 3px rgba(34,211,238,.9));
+    --sh-panel:0 0 20px rgba(34,211,238,.26);--sh-panel-sm:0 0 14px rgba(34,211,238,.24);
+    --sh-board:0 0 28px rgba(34,211,238,.3);--sh-board-sm:0 0 18px rgba(34,211,238,.26);
+    --sh-tip:0 0 18px rgba(244,114,182,.32);--sh-tip-sm:0 0 12px rgba(244,114,182,.3);
+    --sh-btn:0 0 12px rgba(34,211,238,.28);--sh-btn-active:0 0 4px rgba(34,211,238,.3);
+    --sh-btn2:0 0 12px rgba(244,114,182,.26);--sh-btn2-active:0 0 4px rgba(244,114,182,.3);
+    --sh-pop:0 0 26px rgba(34,211,238,.35);--pop-mask:rgba(2,6,14,.86);
+}
+/* 皮肤：P5 红黑（最初的黑白红硬边风格） */
+html[data-skin="p5"]{
+    --skew-tip:-6deg;--skew-btn:-10deg;
+    --accent:#e60012;--accent-2:#ffd400;--on-accent:#ffffff;--on-accent-2:#0b0b0b;
+    --body-bg:#0b0b0b;--body-stripe:rgba(230,0,18,.08);--body-text:#f2f2f2;
+    --panel-bg:#f2f2f2;--panel-text:#222222;--panel-muted:#777777;
+    --border:#0b0b0b;--btn-border:#0b0b0b;
+    --log-bg:#ffffff;--log-new-bg:#0b0b0b;--log-new-text:#f2f2f2;--log-new-muted:#b9b9b9;
+    --board-bg:#000000;--board-frame:#f2f2f2;
+    --cell-bg:#161616;--cell-border:#343434;--cell-hover:#262626;--cell-glyph:#8a8a8a;
+    --cell-green-bg:#0f5132;--cell-green-border:#22c55e;
+    --cell-red-bg:#7f1d1d;--cell-red-border:#ef4444;
+    --cell-treasure-bg:#8a6d00;
+    --green:#22c55e;--red:#ef4444;--green-dark:#0f7a3d;--red-dark:#c1121f;
+    --green-light:#4ade80;--red-light:#f87171;
+    --piece-ring:#ffffff;--mine-filter:drop-shadow(0 0 2px rgba(255,255,255,.75));
+    --sh-panel:8px 8px 0 var(--accent);--sh-panel-sm:5px 5px 0 var(--accent);
+    --sh-board:10px 10px 0 var(--accent);--sh-board-sm:6px 6px 0 var(--accent);
+    --sh-tip:6px 6px 0 var(--panel-bg);--sh-tip-sm:4px 4px 0 var(--panel-bg);
+    --sh-btn:5px 5px 0 var(--accent);--sh-btn-active:1px 1px 0 var(--accent);
+    --sh-btn2:5px 5px 0 var(--panel-bg);--sh-btn2-active:1px 1px 0 var(--panel-bg);
+    --sh-pop:12px 12px 0 var(--accent);--pop-mask:rgba(0,0,0,.82);
+}
+/* 皮肤：矩阵终端（全息绿 + 等宽字体） */
+html[data-skin="matrix"]{
+    --font-ui:"Consolas","Courier New","Microsoft YaHei",monospace;
+    --font-display:"Consolas","Courier New","Microsoft YaHei",monospace;
+    --skew-tip:0deg;--skew-btn:0deg;
+    --accent:#00ff66;--accent-2:#a3ff12;--on-accent:#00170a;--on-accent-2:#0b1a02;
+    --body-bg:#000000;--body-stripe:rgba(0,255,102,.05);--body-text:#7dffb0;
+    --panel-bg:#03180c;--panel-text:#9dffc4;--panel-muted:#3f8f63;
+    --border:#0a5c31;--btn-border:#0f7a41;
+    --log-bg:#02140a;--log-new-bg:#00622f;--log-new-text:#eafff2;--log-new-muted:#a8ffcd;
+    --board-bg:#010b06;--board-frame:#0a5c31;
+    --cell-bg:#04160c;--cell-border:#0d3d21;--cell-hover:#0a2c17;--cell-glyph:#2f7f55;
+    --cell-green-bg:#043d24;--cell-green-border:#00ff66;
+    --cell-red-bg:#3a1206;--cell-red-border:#ff6b4a;
+    --cell-treasure-bg:#3f3a00;
+    --green:#00ff66;--red:#ff6b4a;--green-dark:#00c853;--red-dark:#e2452a;
+    --green-light:#7cffb2;--red-light:#ffb199;
+    --piece-ring:#d8ffe8;--mine-filter:drop-shadow(0 0 3px rgba(0,255,102,.85));
+    --sh-panel:0 0 16px rgba(0,255,102,.28);--sh-panel-sm:0 0 12px rgba(0,255,102,.26);
+    --sh-board:0 0 22px rgba(0,255,102,.3);--sh-board-sm:0 0 14px rgba(0,255,102,.28);
+    --sh-tip:0 0 16px rgba(163,255,18,.32);--sh-tip-sm:0 0 12px rgba(163,255,18,.3);
+    --sh-btn:0 0 10px rgba(0,255,102,.3);--sh-btn-active:0 0 4px rgba(0,255,102,.35);
+    --sh-btn2:0 0 10px rgba(163,255,18,.3);--sh-btn2-active:0 0 4px rgba(163,255,18,.35);
+    --sh-pop:0 0 24px rgba(0,255,102,.35);--pop-mask:rgba(0,10,4,.88);
+}
+/* 皮肤：经典复古（浅色 Windows 经典扫雷配色） */
+html[data-skin="classic"]{
+    --skew-tip:0deg;--skew-btn:0deg;
+    --accent:#0a4d9c;--accent-2:#c8a300;--on-accent:#ffffff;--on-accent-2:#1c1c1c;
+    --body-bg:#0a7a7a;--body-stripe:rgba(255,255,255,.05);--body-text:#eafaf5;
+    --panel-bg:#d9d9d9;--panel-text:#1c1c1c;--panel-muted:#5a5a5a;
+    --border:#3a3a3a;--btn-border:#3a3a3a;
+    --log-bg:#f4f4f4;--log-new-bg:#0a4d9c;--log-new-text:#ffffff;--log-new-muted:#c6dcf5;
+    --board-bg:#8f8f8f;--board-frame:#d9d9d9;
+    --cell-bg:#c6c6c6;--cell-border:#8a8a8a;--cell-hover:#dedede;--cell-glyph:#3a3a3a;
+    --cell-green-bg:#a7dcb4;--cell-green-border:#1f9d4d;
+    --cell-red-bg:#f0b3b0;--cell-red-border:#c0392b;
+    --cell-treasure-bg:#e6c94d;
+    --green:#22a35a;--red:#d63b2f;--green-dark:#1a7a44;--red-dark:#b32a20;
+    --green-light:#2fbf6e;--red-light:#e05a4e;
+    --piece-ring:#ffffff;--mine-filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));
+    --sh-panel:5px 5px 0 rgba(0,0,0,.4);--sh-panel-sm:4px 4px 0 rgba(0,0,0,.35);
+    --sh-board:7px 7px 0 rgba(0,0,0,.4);--sh-board-sm:5px 5px 0 rgba(0,0,0,.35);
+    --sh-tip:4px 4px 0 rgba(0,0,0,.35);--sh-tip-sm:3px 3px 0 rgba(0,0,0,.3);
+    --sh-btn:4px 4px 0 rgba(0,0,0,.4);--sh-btn-active:1px 1px 0 rgba(0,0,0,.4);
+    --sh-btn2:4px 4px 0 rgba(0,0,0,.4);--sh-btn2-active:1px 1px 0 rgba(0,0,0,.4);
+    --sh-pop:8px 8px 0 rgba(0,0,0,.45);--pop-mask:rgba(0,20,20,.7);
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:var(--font-ui)}
+button,.side h3,.pop-box h2,.tip-text,.legend,.player-info .green,.player-info .red{font-family:var(--font-display)}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overflow-x:hidden}
-body{background:var(--ink);background-image:repeating-linear-gradient(-45deg,rgba(230,0,18,.08) 0 10px,transparent 10px 32px);color:var(--paper);padding:24px;overflow-x:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+body{background:var(--body-bg);background-image:repeating-linear-gradient(-45deg,var(--body-stripe) 0 10px,transparent 10px 32px);color:var(--body-text);padding:24px;overflow-x:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background-color .25s,color .25s}
 /* 主区 + 右侧分数记录 */
 .app{display:flex;gap:24px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
 .main{display:flex;flex-direction:column;align-items:center}
-.side{width:280px;background:var(--paper);border:3px solid var(--ink);box-shadow:8px 8px 0 var(--p5red);display:flex;flex-direction:column;max-height:690px}
-.side h3{background:var(--p5red);color:#fff;font-size:15px;font-weight:900;font-style:italic;letter-spacing:2px;padding:9px 14px;border-bottom:3px solid var(--ink)}
+.side{width:280px;background:var(--panel-bg);border:3px solid var(--border);border-radius:var(--radius-btn);box-shadow:var(--sh-panel);display:flex;flex-direction:column;max-height:690px}
+.side h3{background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:900;font-style:italic;letter-spacing:2px;padding:9px 14px;border-bottom:3px solid var(--border)}
 .log-list{list-style:none;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px;padding:10px}
-.log-item{font-size:13px;line-height:1.5;padding:7px 9px;background:#fff;border-left:6px solid var(--ink);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
-/* 最新一条记录高亮（黑底反白，P5 式强调） */
-.log-new{background:var(--ink);color:var(--paper);animation:logPop .3s ease-out}
+.log-item{font-size:13px;line-height:1.5;padding:7px 9px;background:var(--log-bg);color:var(--panel-text);border-left:6px solid var(--border);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
+/* 最新一条记录高亮（反色强调） */
+.log-new{background:var(--log-new-bg);color:var(--log-new-text);animation:logPop .3s ease-out}
 @keyframes logPop{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
-.log-empty{color:#999;font-size:13px;font-weight:600;padding:6px 2px}
-.log-green{border-left-color:var(--sgreen)}
-.log-red{border-left-color:var(--sred)}
+.log-empty{color:var(--panel-muted);font-size:13px;font-weight:600;padding:6px 2px}
+.log-green{border-left-color:var(--green-dark)}
+.log-red{border-left-color:var(--red-dark)}
 .log-side{font-weight:900}
-.log-green .log-side{color:var(--sgreen)}
-.log-red .log-side{color:var(--sred)}
+.log-green .log-side{color:var(--green-dark)}
+.log-red .log-side{color:var(--red-dark)}
 .log-delta{margin-left:auto;font-weight:900}
-.log-green .log-delta{color:var(--sgreen)}
-.log-red .log-delta{color:var(--sred)}
-.log-total{width:100%;font-size:12px;color:#777}
-.log-new.log-green{border-left-color:var(--lgreen)}
-.log-new.log-red{border-left-color:var(--lred)}
-.log-new.log-green .log-side,.log-new.log-green .log-delta{color:var(--lgreen)}
-.log-new.log-red .log-side,.log-new.log-red .log-delta{color:var(--lred)}
-.log-new .log-total{color:#b9b9b9}
-.info-bar{width:100%;max-width:720px;margin-bottom:14px;display:flex;justify-content:space-between;background:var(--paper);border:3px solid var(--ink);box-shadow:8px 8px 0 var(--p5red)}
-.player-info{flex:1;text-align:center;padding:10px 8px;border-right:3px solid var(--ink);color:#333;font-size:13px;font-weight:600}
+.log-green .log-delta{color:var(--green-dark)}
+.log-red .log-delta{color:var(--red-dark)}
+.log-total{width:100%;font-size:12px;color:var(--panel-muted)}
+.log-new.log-green{border-left-color:var(--green-light)}
+.log-new.log-red{border-left-color:var(--red-light)}
+.log-new.log-green .log-side,.log-new.log-green .log-delta{color:var(--green-light)}
+.log-new.log-red .log-side,.log-new.log-red .log-delta{color:var(--red-light)}
+.log-new .log-total{color:var(--log-new-muted)}
+.info-bar{width:100%;max-width:720px;margin-bottom:14px;display:flex;justify-content:space-between;background:var(--panel-bg);border:3px solid var(--border);box-shadow:var(--sh-panel)}
+.player-info{flex:1;text-align:center;padding:10px 8px;border-right:3px solid var(--border);color:var(--panel-text);font-size:13px;font-weight:600}
 .player-info:last-child{border-right:none}
 .player-info .green,.player-info .red{font-size:17px;font-weight:900;font-style:italic;letter-spacing:2px;margin-bottom:3px}
-.player-info .green{color:var(--sgreen)}
-.player-info .red{color:var(--sred)}
+.player-info .green{color:var(--green-dark)}
+.player-info .red{color:var(--red-dark)}
 /* 顶部「地雷剩余」：按格子统计，同格叠雷只算 1 */
-.mine-total{color:var(--ink);font-weight:900;font-style:italic;letter-spacing:1px;margin-bottom:2px}
-.mine-total #mineLeft{color:var(--p5red);font-size:16px}
+.mine-total{color:var(--panel-text);font-weight:900;font-style:italic;letter-spacing:1px;margin-bottom:2px}
+.mine-total #mineLeft{color:var(--accent);font-size:16px}
 /* 埋雷阶段不显示地雷剩余：用 visibility 占位，保持信息栏三列行高对齐 */
 .mine-total.hide{visibility:hidden}
-#stageText{color:var(--ink);font-weight:900}
-.tip-text{margin:0 0 16px;width:100%;max-width:720px;min-height:44px;background:var(--p5red);color:#fff;border:3px solid var(--ink);box-shadow:6px 6px 0 var(--paper);padding:8px 16px;font-size:16px;font-weight:900;font-style:italic;letter-spacing:.5px;text-align:center;display:flex;align-items:center;justify-content:center;transform:skewX(-6deg)}
+#stageText{color:var(--panel-text);font-weight:900}
+.tip-text{margin:0 0 16px;width:100%;max-width:720px;min-height:44px;background:var(--accent);color:var(--on-accent);border:3px solid var(--border);box-shadow:var(--sh-tip);padding:8px 16px;font-size:16px;font-weight:900;font-style:italic;letter-spacing:.5px;text-align:center;display:flex;align-items:center;justify-content:center;transform:skewX(var(--skew-tip))}
 /* --cell 为单格边长，由视口宽度推导，桌面封顶 44px */
-#board{--cell:44px;display:grid;grid-template-columns:repeat(11,var(--cell));gap:2px;background:#000;padding:4px;border:4px solid var(--paper);box-shadow:10px 10px 0 var(--p5red);touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-.cell{width:var(--cell);height:var(--cell);background:#161616;border:1px solid #343434;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:10px;color:#8a8a8a;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#board{--cell:44px;display:grid;grid-template-columns:repeat(11,var(--cell));gap:2px;background:var(--board-bg);padding:4px;border:4px solid var(--board-frame);box-shadow:var(--sh-board);touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.cell{width:var(--cell);height:var(--cell);background:var(--cell-bg);border:1px solid var(--cell-border);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:10px;color:var(--cell-glyph);-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 /* 起点区域底色 */
-.cell.green-base{background:#0f5132;border-color:#22c55e}
-.cell.red-base{background:#7f1d1d;border-color:#ef4444}
+.cell.green-base{background:var(--cell-green-bg);border-color:var(--cell-green-border)}
+.cell.red-base{background:var(--cell-red-bg);border-color:var(--cell-red-border)}
 /* 宝石样式 */
-.cell.treasure{background:#8a6d00;border-color:var(--gold)}
+.cell.treasure{background:var(--cell-treasure-bg);border-color:var(--accent-2)}
 .cell.treasure::after{content:"💎";font-size:22px}
 /* 棋子（P5 式菱形） */
-.piece{width:clamp(13px,46%,22px);height:clamp(13px,46%,22px);position:absolute;z-index:2;border-radius:0;transform:rotate(45deg);box-shadow:0 0 0 2px #fff}
-.piece.green{background:#22c55e;border:2px solid var(--ink)}
-.piece.red{background:#ef4444;border:2px solid var(--ink)}
+.piece{width:clamp(13px,46%,22px);height:clamp(13px,46%,22px);position:absolute;z-index:2;border-radius:0;transform:rotate(45deg);box-shadow:0 0 0 2px var(--piece-ring)}
+.piece.green{background:var(--green);border:2px solid var(--border)}
+.piece.red{background:var(--red);border:2px solid var(--border)}
 /* 地雷标记：绿雷 / 红雷 / 双雷（使用目录下的图片） */
 .cell.mine-green::before,.cell.mine-red::before,.cell.mine-both::before{
     content:"";position:absolute;width:clamp(14px,64%,28px);height:clamp(14px,64%,28px);z-index:1;
     background-repeat:no-repeat;background-position:center;background-size:contain;
-    filter:drop-shadow(0 0 2px rgba(255,255,255,.75));
+    filter:var(--mine-filter);
 }
 .cell.mine-green::before{background-image:url("GreenMine.png")}
 .cell.mine-red::before{background-image:url("RedMine.png")}
 .cell.mine-both::before{background-image:url("RGMine.png")}
 /* 图例 */
-.legend{margin-top:16px;display:flex;gap:22px;font-size:13px;color:var(--paper);font-weight:900;font-style:italic;letter-spacing:1px;flex-wrap:wrap;justify-content:center}
+.legend{margin-top:16px;display:flex;gap:22px;font-size:13px;color:var(--body-text);font-weight:900;font-style:italic;letter-spacing:1px;flex-wrap:wrap;justify-content:center}
 .legend span{display:flex;align-items:center;gap:7px}
 .legend i{width:20px;height:20px;display:inline-block;background-repeat:no-repeat;background-position:center;background-size:contain}
 .legend i.g{background-image:url("GreenMine.png")}
@@ -95,31 +204,41 @@ body{background:var(--ink);background-image:repeating-linear-gradient(-45deg,rgb
     background:radial-gradient(circle,#ffffff 0%,#a5f3fc 30%,#67e8f9 52%,rgba(103,232,249,0) 70%);
     animation:gemFlash .6s ease-out forwards}
 .gem-ring{position:absolute;left:15%;top:15%;width:70%;height:70%;border-radius:50%;pointer-events:none;z-index:4;
-    border:3px solid var(--gold);animation:gemRing .6s ease-out forwards}
+    border:3px solid var(--accent-2);animation:gemRing .6s ease-out forwards}
 .gem-score{position:absolute;left:50%;top:4px;font-size:clamp(11px,3.4vw,15px);font-weight:900;font-style:italic;pointer-events:none;z-index:5;
     text-shadow:0 0 6px rgba(0,0,0,.95),0 0 3px rgba(255,255,255,.85);animation:gemScore .95s ease-out forwards}
-.gem-score-green{color:var(--lgreen)}
-.gem-score-red{color:var(--lred)}
+.gem-score-green{color:var(--green-light)}
+.gem-score-red{color:var(--red-light)}
 .ctrl-area{margin-top:22px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-button{padding:11px 26px;font-size:15px;font-weight:900;font-style:italic;letter-spacing:1px;color:var(--ink);
-    border:3px solid var(--ink);border-radius:0;cursor:pointer;margin:0 6px;background:var(--paper);
-    box-shadow:5px 5px 0 var(--p5red);transform:skewX(-10deg);transition:transform .1s,box-shadow .1s}
-button:active{transform:skewX(-10deg) translate(4px,4px);box-shadow:1px 1px 0 var(--p5red)}
-#confirmMine{background:var(--p5red);color:#fff;box-shadow:5px 5px 0 var(--paper)}
-#confirmMine:active{box-shadow:1px 1px 0 var(--paper)}
-#restart{background:var(--paper);color:var(--ink)}
-#toggleMineView{background:var(--gold);color:var(--ink);display:none}
-.pop{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;z-index:99;padding:16px}
-.pop-box{background:var(--paper);border:4px solid var(--ink);box-shadow:12px 12px 0 var(--p5red);padding:0;text-align:center;max-width:min(400px,90vw);min-width:min(300px,80vw)}
-.pop-box h2{background:var(--p5red);color:#fff;font-size:19px;font-weight:900;font-style:italic;letter-spacing:2px;padding:11px 12px;border-bottom:4px solid var(--ink)}
-.pop-box p{padding:22px;color:#111;font-size:15px;font-weight:700}
-.pop-box button{margin:0 0 24px;background:var(--ink);color:var(--paper);box-shadow:5px 5px 0 var(--p5red)}
-.pop-box button:active{box-shadow:1px 1px 0 var(--p5red)}
+button{padding:11px 26px;font-size:15px;font-weight:900;font-style:italic;letter-spacing:1px;color:var(--panel-text);
+    border:3px solid var(--btn-border);border-radius:var(--radius-btn);cursor:pointer;margin:0 6px;background:var(--panel-bg);
+    box-shadow:var(--sh-btn);transform:skewX(var(--skew-btn));transition:transform .1s,box-shadow .1s}
+button:active{transform:skewX(var(--skew-btn)) translate(4px,4px);box-shadow:var(--sh-btn-active)}
+#confirmMine{background:var(--accent);color:var(--on-accent);box-shadow:var(--sh-btn2)}
+#confirmMine:active{box-shadow:var(--sh-btn2-active)}
+#restart{background:var(--panel-bg);color:var(--panel-text)}
+#toggleMineView{background:var(--accent-2);color:var(--on-accent-2);display:none}
+/* ===== 皮肤切换条 ===== */
+.skin-bar{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center}
+.skin-bar .skin-label{font-size:12px;font-weight:900;font-style:italic;letter-spacing:2px;color:var(--body-text);opacity:.85;margin-right:2px}
+.skin-btn{display:inline-flex;align-items:center;gap:7px;margin:0;padding:7px 13px;font-size:12px;font-weight:900;font-style:italic;letter-spacing:.5px;
+    color:var(--panel-text);background:var(--panel-bg);border:3px solid var(--btn-border);border-radius:var(--radius-btn);box-shadow:none;
+    transform:skewX(var(--skew-btn));transition:transform .1s,box-shadow .12s,filter .12s}
+.skin-btn:active{transform:skewX(var(--skew-btn)) translate(2px,2px);box-shadow:none}
+.skin-btn .sw{width:13px;height:13px;display:inline-block;flex:none;border:1px solid rgba(255,255,255,.35)}
+.skin-btn.active{background:var(--accent);color:var(--on-accent);border-color:var(--border)}
+.skin-btn.active .sw{box-shadow:0 0 0 2px var(--on-accent)}
+.pop{position:fixed;inset:0;background:var(--pop-mask);display:none;align-items:center;justify-content:center;z-index:99;padding:16px}
+.pop-box{background:var(--panel-bg);border:4px solid var(--border);box-shadow:var(--sh-pop);padding:0;text-align:center;max-width:min(400px,90vw);min-width:min(300px,80vw)}
+.pop-box h2{background:var(--accent);color:var(--on-accent);font-size:19px;font-weight:900;font-style:italic;letter-spacing:2px;padding:11px 12px;border-bottom:4px solid var(--border)}
+.pop-box p{padding:22px;color:var(--panel-text);font-size:15px;font-weight:700}
+.pop-box button{margin:0 0 24px;background:var(--border);color:var(--body-text);box-shadow:var(--sh-btn)}
+.pop-box button:active{box-shadow:var(--sh-btn-active)}
 
 /* ===== 移动端 / 触屏适配 ===== */
 /* 触屏设备不保留 :hover 粘滞状态（点过的格子不会一直亮着） */
 @media (hover:hover) and (pointer:fine){
-    .cell:hover{background:#262626}
+    .cell:hover{background:var(--cell-hover)}
     button:hover{filter:brightness(1.08)}
 }
 /* 窄屏：主区与记录面板改为上下堆叠，棋盘按视口宽度缩小 */
@@ -128,18 +247,21 @@ button:active{transform:skewX(-10deg) translate(4px,4px);box-shadow:1px 1px 0 va
     .app{flex-direction:column;align-items:center;gap:18px}
     .main,.side{width:100%}
     /* 11 格 + 间隙/内边距/边框共约 60px，留 2px 余量自适应 */
-    #board{--cell:clamp(22px,calc((100vw - 62px)/11),44px);box-shadow:6px 6px 0 var(--p5red)}
-    .info-bar{box-shadow:5px 5px 0 var(--p5red);margin-bottom:10px}
+    #board{--cell:clamp(22px,calc((100vw - 62px)/11),44px);box-shadow:var(--sh-board-sm)}
+    .info-bar{box-shadow:var(--sh-panel-sm);margin-bottom:10px}
     .player-info{font-size:11.5px;padding:8px 4px}
     .player-info .green,.player-info .red{font-size:15px;letter-spacing:1px;margin-bottom:2px}
-    .tip-text{box-shadow:4px 4px 0 var(--paper);font-size:14px;min-height:38px;padding:7px 10px;letter-spacing:0;margin-bottom:12px}
+    .tip-text{box-shadow:var(--sh-tip-sm);font-size:14px;min-height:38px;padding:7px 10px;letter-spacing:0;margin-bottom:12px}
     .legend{gap:12px;font-size:11.5px;letter-spacing:0;margin-top:12px}
     .legend i{width:18px;height:18px}
     .ctrl-area{margin-top:16px;gap:8px}
+    .skin-bar{margin-top:10px;gap:6px}
+    .skin-bar .skin-label{letter-spacing:1px}
+    .skin-btn{padding:7px 10px;font-size:11.5px}
     button{padding:11px 16px;font-size:14px;letter-spacing:0;margin:0}
     /* 格子变小后描边按比例减细，避免棋子/图标被边框吃掉 */
     .piece.green,.piece.red{border-width:1.5px}
-    .piece{box-shadow:0 0 0 1.5px #fff}
+    .piece{box-shadow:0 0 0 1.5px var(--piece-ring)}
     .side{max-height:none}
     .log-list{max-height:220px}
     .pop-box h2{font-size:17px;letter-spacing:1px}
@@ -185,6 +307,14 @@ button:active{transform:skewX(-10deg) translate(4px,4px);box-shadow:1px 1px 0 va
     <button id="confirmMine">完成埋雷</button>
     <button id="toggleMineView">显示地雷</button>
     <button id="restart">重新开局</button>
+</div>
+<!-- 皮肤切换 -->
+<div class="skin-bar" id="skinBar">
+    <span class="skin-label">皮肤</span>
+    <button class="skin-btn" data-skin="neon" type="button"><i class="sw" style="background:linear-gradient(135deg,#22d3ee,#0d1729)"></i>霓虹暗夜 · 默认</button>
+    <button class="skin-btn" data-skin="p5" type="button"><i class="sw" style="background:linear-gradient(135deg,#e60012,#0b0b0b)"></i>P5 红黑</button>
+    <button class="skin-btn" data-skin="matrix" type="button"><i class="sw" style="background:linear-gradient(135deg,#00ff66,#020b06)"></i>矩阵终端</button>
+    <button class="skin-btn" data-skin="classic" type="button"><i class="sw" style="background:linear-gradient(135deg,#0a4d9c,#d9d9d9)"></i>经典复古</button>
 </div>
 </div>
 <aside class="side">
@@ -639,9 +769,39 @@ document.getElementById("restart").onclick = function(){
     location.reload();
 }
 
+// ===== 皮肤系统 =====
+// 所有可选皮肤（与 <style> 中的 html[data-skin="..."] 一一对应）
+const SKIN_LIST = ["neon","p5","matrix","classic"];
+// 默认皮肤：霓虹暗夜
+const DEFAULT_SKIN = "neon";
+const SKIN_KEY = "minesweeper.skin";
+
+// 套用皮肤：id 皮肤标识，persist 是否写入 localStorage（用户手动切换时写）
+function applySkin(id, persist){
+    if(SKIN_LIST.indexOf(id) === -1) id = DEFAULT_SKIN;
+    document.documentElement.setAttribute("data-skin", id);
+    document.querySelectorAll(".skin-btn").forEach(function(btn){
+        btn.classList.toggle("active", btn.dataset.skin === id);
+    });
+    if(persist){
+        try{ localStorage.setItem(SKIN_KEY, id); }catch(e){}
+    }
+}
+
+// 初始化：读取上次选择（已由 head 内联脚本预先套用），并绑定切换按钮
+function initSkin(){
+    let saved = null;
+    try{ saved = localStorage.getItem(SKIN_KEY); }catch(e){}
+    applySkin(saved || DEFAULT_SKIN, false);
+    document.querySelectorAll(".skin-btn").forEach(function(btn){
+        btn.onclick = function(){ applySkin(btn.dataset.skin, true); };
+    });
+}
+
 // 页面加载初始化
 window.onload = function(){
     initBoard();
+    initSkin();
     updateMineTip();
     updateScore();
     updateTreasureLeft();
